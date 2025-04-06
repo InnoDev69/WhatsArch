@@ -39,23 +39,25 @@ function throttleCPU(enable) {
     const cpuCount = os.cpus().length;
     const systemMemory = os.totalmem() / 1024 / 1024 / 1024; // GB
 
-    // Ajustar el throttling según los recursos disponibles
-    const throttleTime = cpuCount <= 2 ? 5000 : (cpuCount <= 4 ? 3000 : 2000);
-    // Enviar throttling más agresivo para sistemas con menos recursos
-    const throttleLevel = systemMemory < 4 ? 'aggressive' : 'moderate';
+    // Ajustar el throttling según los recursos disponibles, más agresivo para 2 núcleos y 1GHz
+    const throttleTime = 1000; // Reducir el tiempo para throttling más frecuente
+    const throttleLevel = 'aggressive'; // Siempre usar throttling agresivo
+
 
     throttleIntervalId = setInterval(() => {
       if (win && !win.isDestroyed()) {
-        win.webContents.send('cpu-throttle', throttleLevel);
+        // Pausar la ejecución del renderer process
+        win.webContents.send('cpu-throttle', throttleLevel, throttleTime * 0.8); // Pausar por el 80% del throttleTime
       }
     }, throttleTime);
   }
 }
 
 function createWindow() {
-  win = new BrowserWindow({
-    width: 1000,
-    height: 800,
+
+  const windowOptions = {
+    width: 800, // Reducir tamaño de ventana para menor consumo
+    height: 600,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -81,7 +83,9 @@ function createWindow() {
     paintWhenInitiallyHidden: true,
     // Evitar que la ventana se vuelva a renderizar cuando está en segundo plano
     offscreen: false
-  });
+  };
+
+  win = new BrowserWindow(windowOptions);
 
   // Aplicar User-Agent tanto en sesión por defecto como en sesión persistente
   const filter = {
@@ -98,10 +102,17 @@ function createWindow() {
     callback({ requestHeaders: details.requestHeaders });
   });
 
-  // Limitar el framerate para ahorrar CPU
+  // Limitar el framerate para ahorrar CPU. Valor más bajo para máquinas de bajos recursos.
   win.webContents.on('did-finish-load', () => {
-    win.webContents.setFrameRate(30); // Limitar a 30 FPS
+    win.webContents.setFrameRate(15); // Limitar a 15 FPS
     win.webContents.send('performance-mode', true);
+
+    // Reducir uso de memoria después de cargar la página.
+    setTimeout(() => {
+      if (global.gc) {
+        global.gc();
+      }
+    }, 60000); // Esperar 1 minuto antes de la primera limpieza
   });
 
   // Mostrar ventana solo cuando se haya cargado
@@ -180,11 +191,11 @@ app.on('window-all-closed', () => {
   if (throttleIntervalId) {
     clearInterval(throttleIntervalId);
   }
-  
+
   if (powerSaveId !== null) {
     powerSaveBlocker.stop(powerSaveId);
   }
-  
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
