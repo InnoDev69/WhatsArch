@@ -54,7 +54,7 @@ function createWindow() {
       contextIsolation: true,
       partition: 'persist:whatsapp', // Persistir la sesión
       backgroundThrottling: true, // Habilitamos throttling para mejor rendimiento
-      devTools: false, // Desactivar DevTools en producción
+      devTools: true, // Desactivar DevTools en producción
       preload: path.join(__dirname, 'preload.js'),
       userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       // Optimizaciones adicionales

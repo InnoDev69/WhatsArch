@@ -175,7 +175,14 @@ window.addEventListener('DOMContentLoaded', () => {
   const performanceObserver = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
       if (entry.entryType === 'longtask' && entry.duration > 50) {
-        console.log('Long task detected:', entry.duration);
+        console.warn('Long task detected:', entry);
+        if (entry.attribution[0].name === 'script' && entry.attribution[0].containerType === 'worker') {
+            console.warn('Long task origin likely a worker:', entry.attribution[0].containerSrc);
+        } else if (entry.attribution[0].name === 'script') {
+            console.warn('Long task origin likely a script:', entry.attribution[0].containerSrc);
+            // Si la long task se origina en un script, intenta optimizar el rendimiento
+            window.postMessage('longtask', '*'); // Notificar a la página web sobre la long task
+        }
         // Aquí puedes implementar acciones adicionales para optimizar
       }
     }
@@ -184,26 +191,49 @@ window.addEventListener('DOMContentLoaded', () => {
   performanceObserver.observe({entryTypes: ['longtask']});
 });
 
-// Limitar la frecuencia de actualización
+let throttled = false;
+const throttleDuration = 200; // Duración del throttling en ms
+
+// Limitar la frecuencia de actualización y aplicar throttling cuando se detecta una long task
 let lastRAF = 0;
-const targetFPS = 30; // Puedes ajustar este valor
+const targetFPS = 15; // Reducir el target FPS
 const frameInterval = 1000 / targetFPS;
 
 function limitedRAF(callback) {
-  const currentTime = performance.now();
-  const timeUntilNextFrame = frameInterval - (currentTime - lastRAF);
+    const currentTime = performance.now();
+    const timeUntilNextFrame = frameInterval - (currentTime - lastRAF);
 
-  if (timeUntilNextFrame <= 0) {
-    lastRAF = currentTime;
-    callback();
-  } else {
-    setTimeout(() => limitedRAF(callback), timeUntilNextFrame);
-  }
+    if (!throttled && timeUntilNextFrame <= 0) {
+        lastRAF = currentTime;
+        callback();
+    } else if (throttled) {
+        setTimeout(() => limitedRAF(callback), throttleDuration);
+        throttled = false; // Restablecer el throttling después de la espera
+    } else {
+        setTimeout(() => limitedRAF(callback), timeUntilNextFrame);
+    }
 }
 
-// Reemplazar requestAnimationFrame con nuestra versión limitada
 const originalRAF = window.requestAnimationFrame;
 window.requestAnimationFrame = (callback) => {
-  return originalRAF(() => limitedRAF(callback));
+    return originalRAF(() => limitedRAF(callback));
 };
+
+// Añadir un observador de rendimiento
+const performanceObserver = new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+        if (entry.entryType === 'longtask' && entry.duration > 50) {
+            console.warn('Long task detected:', entry);
+            throttled = true; // Activar el throttling cuando se detecta una long task
+            if (entry.attribution[0].name === 'script' && entry.attribution[0].containerType === 'worker') {
+                console.warn('Long task origin likely a worker:', entry.attribution[0].containerSrc);
+            } else if (entry.attribution[0].name === 'script') {
+                console.warn('Long task origin likely a script:', entry.attribution[0].containerSrc);
+                window.postMessage('longtask', '*'); // Notificar a la página web sobre la long task
+            }
+        }
+    }
+});
+
+performanceObserver.observe({ entryTypes: ['longtask'] });
 
