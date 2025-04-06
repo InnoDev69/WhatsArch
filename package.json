@@ -1,0 +1,44 @@
+{
+  "name": "whatsapp-endeavouros",
+  "version": "1.0.0",
+  "description": "Cliente optimizado de WhatsApp para EndeavourOS",
+  "main": "main.js",
+  "author": {
+    "name": "Thiago N.",
+    "email": "thiago@example.com"
+  },
+  "homepage": "https://github.com/tuusuario/WhatsArch",
+  "scripts": {
+    "start": "electron . --js-flags='--expose-gc'",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^22.3.27",
+    "electron-builder": "^24.9.0"
+  },
+  "build": {
+    "appId": "com.endeavouros.whatsapp",
+    "productName": "WhatsApp EndeavourOS",
+    "linux": {
+      "target": [
+        {
+          "target": "pacman",
+          "arch": "x64"
+        },
+        "tar.gz",
+        "AppImage"
+      ],
+      "category": "Network;InstantMessaging",
+      "icon": "icons/icon.png",
+      "desktop": {
+        "Name": "WhatsApp EndeavourOS",
+        "Comment": "Cliente optimizado de WhatsApp para EndeavourOS",
+        "StartupWMClass": "whatsapp-endeavouros"
+      },
+      "artifactName": "whatsapp-endeavouros-${version}.${ext}"
+    },
+    "pacman": {
+      "compression": "xz"
+    }
+  }
+}
