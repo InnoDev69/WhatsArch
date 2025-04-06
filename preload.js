@@ -1,3 +1,4 @@
+// preload.js
 const { ipcRenderer } = require('electron');
 
 // Lista de scripts externos a bloquear para reducir uso de CPU
@@ -72,57 +73,6 @@ function aggressiveCleanup() {
   });
 }
 
-// Función para limitar la frecuencia de actualización
-function limitFrameRate() {
-  let lastTime = 0;
-  const targetFPS = 15; // Reducir a 15 FPS para ahorrar CPU
-  const frameTime = 1000 / targetFPS;
-
-  window.requestAnimationFrame = (callback) => {
-    const currentTime = performance.now();
-    const delta = currentTime - lastTime;
-
-    if (delta > frameTime) {
-      lastTime = currentTime;
-      callback(currentTime);
-    } else {
-      setTimeout(() => {
-        window.requestAnimationFrame(callback);
-      }, frameTime - delta);
-    }
-  };
-}
-
-// Función para desactivar efectos visuales costosos
-function disableCostlyEffects() {
-  const style = document.createElement('style');
-  style.textContent = `
-    * {
-      transition: none !important;
-      animation: none !important;
-      box-shadow: none !important;
-      text-shadow: none !important;
-    }
-    img, video {
-      image-rendering: pixelated;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-// Función para optimizar el scroll
-function optimizeScroll() {
-  let scrollTimeout;
-  window.addEventListener('scroll', () => {
-    if (!scrollTimeout) {
-      scrollTimeout = setTimeout(() => {
-        scrollTimeout = null;
-        // Realizar aquí las operaciones de scroll
-      }, 100);
-    }
-  }, { passive: true });
-}
-
 // Throttle CPU para ventanas minimizadas
 function applyCPUThrottle(level) {
   if (level === 'aggressive') {
@@ -137,19 +87,6 @@ function applyCPUThrottle(level) {
     setTimeout(() => {
       document.documentElement.style.visibility = 'visible';
     }, 500);
-
-    // Reducir aún más la frecuencia de actualización
-    const targetFPS = 5; // Reducir a 5 FPS en modo agresivo
-    const frameTime = 1000 / targetFPS;
-    window.requestAnimationFrame = (callback) => {
-      setTimeout(() => callback(performance.now()), frameTime);
-    };
-    
-    // Desactivar temporalmente eventos no esenciales
-    const events = ['mousemove', 'scroll', 'keypress'];
-    events.forEach(event => {
-      window.addEventListener(event, e => e.stopPropagation(), true);
-    });
   }
   
   // Reducir la prioridad de tareas en segundo plano
@@ -166,23 +103,23 @@ function applyCPUThrottle(level) {
 
 // Modo de rendimiento
 function enablePerformanceMode() {
-  disableCostlyEffects();
-  limitFrameRate();
-  optimizeScroll();
-  
-  // Desactivar Web Workers si no son críticos
-  if (window.Worker) {
-    window.Worker = function() { return null; };
-  }
-  
-  // Limitar el uso de localStorage
-  const originalSetItem = localStorage.setItem;
-  localStorage.setItem = function(key, value) {
-    if (localStorage.length > 50) { // Limitar a 50 elementos
-      return;
-    }
-    originalSetItem.apply(this, arguments);
-  };
+  // Desactivar efectos visuales costosos
+  try {
+    const styleSheet = document.createElement('style');
+    styleSheet.textContent = `
+      * {
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
+      
+      img, video {
+        image-rendering: optimizeSpeed;
+      }
+    `;
+    document.head.appendChild(styleSheet);
+  } catch (e) {}
 }
 
 // Escuchar mensajes del proceso principal
@@ -222,7 +159,6 @@ ipcRenderer.on('performance-mode', () => {
 // Inyectar observador de mutaciones para detectar y optimizar nuevos elementos DOM
 window.addEventListener('DOMContentLoaded', () => {
   injectPerformanceOptimizations();
-  enablePerformanceMode(); // Activar el modo de rendimiento por defecto
   
   // Interceptar solicitudes de red potencialmente pesadas
   const originalFetch = window.fetch;
@@ -260,24 +196,4 @@ window.addEventListener('DOMContentLoaded', () => {
     childList: true,
     subtree: true
   });
-
-  // Optimizar la carga de imágenes
-  document.querySelectorAll('img').forEach(img => {
-    img.loading = 'lazy';
-    img.decoding = 'async';
-  });
-  
-  // Desactivar animaciones CSS
-  document.body.style.setProperty('--animate-duration', '0s', 'important');
-});
-
-// Nuevo evento para manejar la visibilidad de la página
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    aggressiveCleanup();
-    applyCPUThrottle('aggressive');
-  } else {
-    cleanupResources();
-    applyCPUThrottle('moderate');
-  }
 });
