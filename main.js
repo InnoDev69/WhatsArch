@@ -13,21 +13,13 @@ app.userAgentFallback = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHT
 // Optimizaciones avanzadas antes de iniciar la app
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('js-flags', '--expose-gc');
-app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess');
-app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
-app.commandLine.appendSwitch('disable-gpu-vsync');
 app.commandLine.appendSwitch('disable-software-rasterizer');
-app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('disable-quic');
-app.commandLine.appendSwitch('disable-http2');
-app.commandLine.appendSwitch('disable-accelerated-video-decode');
-app.commandLine.appendSwitch('disable-accelerated-video-encode');
-app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
-app.commandLine.appendSwitch('disable-site-isolation-trials');
+app.commandLine.appendSwitch('disable-gpu'); // Desactivar la GPU para reducir el consumo
 app.commandLine.appendSwitch('high-dpi-support', 1);
 app.commandLine.appendSwitch('force-device-scale-factor', 1);
 
-// Función para limitar el uso de CPU
+
+// Reemplazar la función throttleCPU con una versión más suave
 function throttleCPU(enable) {
   if (throttleIntervalId) {
     clearInterval(throttleIntervalId);
@@ -35,19 +27,18 @@ function throttleCPU(enable) {
   }
 
   if (enable && win) {
-    // Detectar número de núcleos disponibles y memoria
-    const cpuCount = os.cpus().length;
-    const systemMemory = os.totalmem() / 1024 / 1024 / 1024; // GB
-
-    // Ajustar el throttling según los recursos disponibles, más agresivo para 2 núcleos y 1GHz
-    const throttleTime = 1000; // Reducir el tiempo para throttling más frecuente
-    const throttleLevel = 'aggressive'; // Siempre usar throttling agresivo
-
+    const throttleTime = 100; // Reducir el intervalo para un throttling más suave
+    let lastThrottleTime = Date.now();
 
     throttleIntervalId = setInterval(() => {
       if (win && !win.isDestroyed()) {
-        // Pausar la ejecución del renderer process
-        win.webContents.send('cpu-throttle', throttleLevel, throttleTime * 0.8); // Pausar por el 80% del throttleTime
+        const now = Date.now();
+        const timeSinceLastThrottle = now - lastThrottleTime;
+
+        if (timeSinceLastThrottle >= 1000) { // Aplicar throttling cada segundo
+          win.webContents.send('cpu-throttle', 'smooth', throttleTime);
+          lastThrottleTime = now;
+        }
       }
     }, throttleTime);
   }
@@ -68,12 +59,14 @@ function createWindow() {
       userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       // Optimizaciones adicionales
       enableWebSQL: false,
+      webgl: false, // Desactivar WebGL para reducir consumo de GPU
+      safeBrowsingEnabled: false, // Desactivar Safe Browsing
       spellcheck: false,
       disableDialogs: true,
       zoomFactor: 1.0,
       enableBlinkFeatures: '',
       disableBlinkFeatures: 'AutomationControlled,Translate',
-      disableHardwareAcceleration: true // Esta opción reduce considerablemente el uso de CPU
+      disableHardwareAcceleration: true // Desactivar aceleración por hardware
     },
     // Optimizaciones para reducir el uso de memoria
     backgroundColor: '#f8f9fa',
@@ -104,7 +97,7 @@ function createWindow() {
 
   // Limitar el framerate para ahorrar CPU. Valor más bajo para máquinas de bajos recursos.
   win.webContents.on('did-finish-load', () => {
-    win.webContents.setFrameRate(15); // Limitar a 15 FPS
+    win.webContents.setFrameRate(10); // Limitar a 10 FPS para reducir uso de CPU
     win.webContents.send('performance-mode', true);
 
     // Reducir uso de memoria después de cargar la página.
@@ -163,23 +156,20 @@ function createWindow() {
   });
 }
 
-// Limpieza de memoria cada 60 segundos cuando está minimizada
-// y cada 5 minutos cuando está en uso
+// Modificar el intervalo de limpieza para que sea más frecuente pero menos intensivo
+let cleanupCounter = 0;
 setInterval(() => {
   if (win && !win.isDestroyed()) {
-    if (isMinimized) {
+    cleanupCounter++;
+    if (isMinimized || cleanupCounter >= 30) { // Limpieza agresiva cada 30 ciclos o cuando está minimizada
       win.webContents.send('aggressive-cleanup');
       if (global.gc) global.gc();
+      cleanupCounter = 0;
+    } else {
+      win.webContents.send('light-cleanup');
     }
   }
-}, 60 * 1000);
-
-setInterval(() => {
-  if (win && !win.isDestroyed() && !isMinimized) {
-    win.webContents.send('cleanup');
-    if (global.gc) global.gc();
-  }
-}, 5 * 60 * 1000);
+}, 10 * 1000); // Ejecutar cada 10 segundos
 
 // Optimización de inicio de aplicación
 app.whenReady().then(() => {
@@ -227,3 +217,4 @@ function reducePriority() {
 app.on('browser-window-blur', () => {
   reducePriority();
 });
+
